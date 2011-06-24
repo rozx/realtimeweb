@@ -4,9 +4,12 @@
  */
 
 // Command Constants
-var IDLE = 0, LOGIN = 1, USERID = 2, DRAW = 4,
+var IDLE = 0, LOGIN = 1, USERID = 2, DRAW = 4,MOUSEMOVE = 5, CHAT = 6, SYNCIMG = 7,
 	CHANGECOLOR = 8, CHANGESHAPE = 16, LOGOUT = 32,
 	STARTDRAWING = 64, SYNCUSER = 128;
+	
+var FREE = 0,LINE =1, CIRC = 2, RECT = 3; 
+var ImgData;
 
 var express = require('express');
 var ws = require("websocket-server")
@@ -44,6 +47,7 @@ app.get('/', function(req, res){
   });
 });
 
+
 app.listen(3000);
 
 var wsserver = ws.createServer();
@@ -56,11 +60,21 @@ wsserver.addListener("connection", function(connection) {
 
 function User(userId) {
 	this.drawing = false;
+	this.Nickname = undefined;
 	this.userId = userId;
 	this.oldX = undefined;
 	this.oldY = undefined;
 	this.color = undefined;
 	this.shape = undefined;
+	this.Offline = true;
+	
+	this.setOffline = function(IsOnline){
+		this.Offline = IsOnline;
+	}
+	
+	this.setNickname = function(NN){
+		this.Nickname = NN;
+	}
 	
 	this.setDrawing = function(d) {
 		this.drawing = d;
@@ -82,47 +96,104 @@ function User(userId) {
 
 function wsOnMessage(con, msg) {
 	console.log("got message: " + msg);
-	var cmd = msg.split('|');
-	switch (parseInt(cmd[0]))
+	
+	
+	
+	if(msg.indexOf("ImageData")!= -1){
+		
+		console.log("lol");
+		
+	}	else
 	{
-		case IDLE:
-			console.log("idle");
-			break;
-		case LOGIN:
-			console.log("sending back user id");
-			onLogin(con);
-			break;
-		case DRAW:
-			users[cmd[1]].save(cmd[2], cmd[3]);
-			con.broadcast(msg);
-			break; 
-		case CHANGECOLOR:
-			users[cmd[1]].setColor(cmd[2]);
-			con.broadcast(msg);
-			break; 
-		case STARTDRAWING:
-			users[cmd[1]].save(cmd[2], cmd[3]);
-			con.broadcast(msg);
-			break; 
+	
+	
+		var cmd = msg.split('|');
+		switch (parseInt(cmd[0]))
+		{
+			case IDLE:
+				console.log("idle");
+				break;
+			case LOGIN:
+				console.log("sending back user id");
+				onLogin(con,cmd[1]);
+				break;
+			case DRAW:
+				users[cmd[1]].save(cmd[3], cmd[4]);
+			
+				con.broadcast(msg);
+				break; 
+			case CHANGECOLOR:
+				users[cmd[1]].setColor(cmd[2]);
+				con.broadcast(msg);
+				break; 
+			case STARTDRAWING:
+				users[cmd[1]].setShape(cmd[2]);
+				users[cmd[1]].save(cmd[3], cmd[4]);
+				con.broadcast(msg);
+				break; 
+			case LOGOUT:
+				onLogout(cmd[1]);
+				con.broadcast(msg);
+			
+				break;
+			case MOUSEMOVE:
+				con.broadcast(msg);
+			
+				break;
+			case 	CHAT:
+				con.broadcast(msg);
+			
+				break;
+		}
 	}
 }
 
-function onLogin(con) {
-	var id = nextUserId++;
+function onLogout(uid) {
+	users[uid].setOffline(true);
+
+}
+
+
+function onLogin(con,NN) {
+	
+	for(var id = 0;id<99;id++){
+		if(!users[id] || users[id].Offline == true){
+			
+			console.log(id);
+			
+			break;
+		}
+	}
+	
+	
+	//id=0;
+	
+	
+	console.log("Sending UID:" + id);
+	
+	// var id = nextUserId++;
 	var user = new User(id);
+	user.setNickname(NN);
+	user.setOffline(false) ;
+	
+	console.log("User Nickname:" + user.Nickname);
 	users[id] = user;
+	
+	console.log("User isOffline:" + users[id].Offline);
+	
+	
 	var str = [USERID,id].join('|');
 	con.send(str);
 	
 	// let other client know a new user has joined
-	str = [LOGIN, id].join('|');
+	str = [LOGIN,id,user.Nickname].join('|');
 	con.broadcast(str);
 	
 	// synchronize other clients that joined before this connection
 	for (var k in users) {
-		if (k != id && users.hasOwnProperty(k)) {
+		if (k != id && users.hasOwnProperty(k) && users[k].Offline==false) {
 			var u = users[k];
-			var msg = [SYNCUSER, u.userId, u.oldX, u.oldY, u.color, u.shape].join('|');
+			var msg = [SYNCUSER, u.userId, u.Nickname, u.oldX, u.oldY, u.color, u.shape].join('|');
 			con.send(msg);
 		}
 	}
